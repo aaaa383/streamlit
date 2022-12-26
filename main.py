@@ -1,41 +1,48 @@
 import streamlit as st
 import pandas as pd
-from ortools.linear_solver import pywraplp
 
 
 # 各炉の容量
-furnace = [1000,500,1500]
+furnace_dict = {
+    "ST01": 22000,
+    "ST02": 22000,
+    "ST03": 22000,
+    "ST04": 22000,
+    "ST05": 22000,
+    "ST06": 8800
+    }
 
-# SCIP でソルバーを作成 
-solver = pywraplp.Solver.CreateSolver('SCIP')
 
-
-def create_data_model(df, limit_capacity):
-    """サンプルデータの作成
-      df: 読み込むDataFrame、num_bins 設定する bin の数、
-      limit_item_capacity: bin の中にいれられる item の数の上限
-    """
+# 貪欲法を解く
+def solve_greedy(data, heat_list, capacity):
     
-    data = {}
-    weights = df["Weight"].values.tolist() # 重量
-    values = df["Value"].values.tolist() # 評価価値
+  total_dict = {}
+  parts_dict = {}
 
-    data['weights'] = weights
-    data['values'] = values
+  for heat in heat_list:
+    # ヒートNO毎に重い順で詰め込んでいく
+    data_ = data[data['ヒートNO'] == heat]
+    data_sort = data_.sort_values(by="重量" ,ascending=False)
 
-    # 製品リスト
-    data['items'] = list(range(len(weights))) 
-    # 製品の個数
-    data['num_items'] = len(weights)
-    # 炉の個数
-    data['num_furnace'] = len(limit_capacity)
-    # 炉のリスト
-    data['furnace'] = list(range(len(limit_capacity)))
-    # 炉のキャパシティ
-    data['furnace_capacities'] = limit_capacity
-    
-    return data
+    total_size = 0
+    parts_list = []
 
+    for low in data_sort.iterrows():
+      if low[1]['重量'] + total_size <= capacity:
+        total_size += low[1]['重量']
+        parts_list.append(low[1]['品番'])
+      
+      # データの集計
+      total_dict[heat] = total_size
+      parts_dict[heat] = parts_list
+  
+  # 一番詰められた組み合わせの算出とその場合の結果の格納
+  optimal_solution = max(total_dict.items(), key=lambda x: x[1])
+  solution_parts_list = parts_dict[optimal_solution[0]]
+
+  data['探索解'] = data['品番'].isin(solution_parts_list) * 1
+
+  return optimal_solution, data
 
 
 # タイトルを表示
@@ -46,7 +53,7 @@ uploaded_file = st.sidebar.file_uploader("CSVファイルをドラッグ&ドロ�
 if uploaded_file is not None:
 
     #データの読込み
-    df = pd.read_csv(uploaded_file)
+    df = pd.read_csv(uploaded_file, encoding='shift-jis')
 
      #データの表示
     st.sidebar.markdown("### 2. データの情報の表示")
@@ -54,86 +61,32 @@ if uploaded_file is not None:
         st.markdown("### 1. アップロードされたデータを確認します")
         st.dataframe(df)
 
-        data = create_data_model(df, furnace)
+        furnace = st.selectbox(label="炉を選んでください",
+             options=furnace_dict.keys())
 
-        # 変数
-        # x[i, j] = 1 if item i is packed in furnace j.
-        x = {}
-        for i in data['items']:
-            for j in data['furnace']:
-                x[(i, j)] = solver.IntVar(0, 1, 'x_%i_%i' % (i, j))
+        # 使う炉のキャパシティ
+        capacity = furnace_dict[furnace]
 
-
-        # 制約条件
-        # 全てのitemは炉のどこかに1つだけ入る
-        for i in data['items']:
-            solver.Add(sum(x[i, j] for j in data['furnace']) <= 1)
-
-        # 制約条件
-        # furnace_capacitiesで設定した重量以上のitemを格納しない
-        for j in data['furnace']:
-            solver.Add(
-                sum(x[(i, j)] * data['weights'][i]
-                    for i in data['items']) <= data['furnace_capacities'][j])
-        
-        # 目的変数の設定
-        objective = solver.Objective()
-
-        for i in data['items']:
-            for j in data['furnace']:
-                objective.SetCoefficient(x[(i, j)], data['values'][i])
-        objective.SetMaximization()
-
-        status = solver.Solve()
-    
     # チェック時に上で求めた条件で数理最適化を解く
     st.sidebar.markdown("### 3. 数理最適化の求解")
     if st.sidebar.checkbox('最適化を行いますか？'):
         st.markdown("### 2. 数理最適化の結果を表示")
-        ### ナップサック処理結果の取得及び DataFrame 化
-        df_knapsack = pd.DataFrame()
         
-        if status == pywraplp.Solver.OPTIMAL:
-            total_weight = 0
-            for j in data['furnace']:
-                furnace_weight = 0
-                furnace_value = 0
-                for i in data['items']:
-                    if x[i, j].solution_value() > 0:
-                        furnace_weight += data['weights'][i]
-                        furnace_value += data['values'][i]
+        heat_list = df['ヒートNO'].unique().tolist()
+        optimal_solution, data = solve_greedy(df, heat_list, capacity)
 
-                        # 必要な情報を 一時的な DataFrameに格納して df_knapsack に結合
-                        df_tmp = pd.DataFrame(
-                            [
-                                j, # furnace
-                                i, # item
-                                data['weights'][i], # weight
-                                data['values'][i], # values
-                            ]
-                        ).T
-
-                        df_tmp.columns=["furnace", "item", "weight", "value"]
-                        df_knapsack = pd.concat([df_knapsack, df_tmp], axis=0)
-            
-                if furnace_weight == 0:
-                    break # 何も入らないfurnaceが登場したらbreakで処理を終わらせる
-                total_weight += furnace_weight
-        else:
-            st.exception(Exception('この問題には最適解がありませんでした。'))
+        # 結果の表示
+        result = pd.DataFrame([optimal_solution], columns=['ヒートNO', '計画重量'])
+        st.dataframe(result)
         
-        st.success('この問題には最適解がありました')
-        df_knapsack = df_knapsack.reset_index(drop=True) # indexのリセット
-
-        # テーブルの表示
-        st.table(df_knapsack)
-
+        st.dataframe(data)
+    
     st.sidebar.markdown("### 3. csvダウンロード")
     if st.sidebar.checkbox('csvダウンロード画面を表示しますか？'):
         st.markdown("### 3. 結果のダウンロード")
 
         st.download_button(
             label='ダウンロードボタン',
-            data=df_knapsack.to_csv(index=None).encode('utf-8'),
+            data=data.to_csv(index=None).encode('utf-8'),
             file_name='result.csv'
         )
