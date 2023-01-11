@@ -84,30 +84,41 @@ def solve_greedy(data, heat_list, furnace_name):
       
       # 納期直前のデータは予め投入しておく
       if len(deadline) > 0:
-        for deadline_data in deadline.iterrows():
-          if deadline_data[1]['重量'] + total_size <= 22000:
-            total_size += deadline_data[1]['重量']
-            total_priority += deadline_data[1]['優先ランク②']
-            parts_list.append(deadline_data[1]['品番'])
-      
-      # 熱処理2回目のデータは予め投入しておく
-      if len(heat_2) > 0:
-        for heat_data in heat_2.iterrows():
-          if heat_data[1]['重量'] + total_size <= 22000:
-            total_size += heat_data[1]['重量']
-            total_priority += heat_data[1]['優先ランク②']
-            parts_list.append(heat_data[1]['品番'])
-      
-      for low in data_sort.iterrows():
-        if low[1]['品番'] in ST06_ONLY or (low[1]['date_diff'] >= 5 and low[1]['品番'] not in DENSO_list):
-          continue
-    
-        # 容量以下になるように備品を詰め込む
-        if low[1]['重量'] + total_size <= 22000:
-          total_size += low[1]['重量']
-          total_priority += low[1]['優先ランク②']
-          parts_list.append(low[1]['品番'])
+        deadline_heat_list = deadline['ヒート'].unique().tolist()
+        for dead_heat in deadline_heat_list:
+          data_heat = data[data['ヒート'] == dead_heat].sort_values(by=["優先ランク②","重量"] , ascending=[True,False])
+          for deadline_data in data_heat.iterrows():
+            if deadline_data[1]['重量'] + total_size <= 22000:
+              total_size += deadline_data[1]['重量']
+              total_priority += deadline_data[1]['優先ランク②']
+              parts_list.append(deadline_data[1]['品番'])
         
+      # 熱処理2回目のデータは予め投入しておく
+      elif len(heat_2) > 0:
+        heat_2_list = heat_2['ヒート'].unique().tolist()
+        for heat_2_ in heat_2_list:
+          data_heat_2 = data[data['ヒート'] == heat_2_].sort_values(by=["優先ランク②","重量"] , ascending=[True,False])
+          for heat_data in data_heat_2.iterrows():
+            if heat_data[1]['重量'] + total_size <= 22000:
+              total_size += heat_data[1]['重量']
+              total_priority += heat_data[1]['優先ランク②']
+              parts_list.append(heat_data[1]['品番'])
+
+      else:
+        for low in data_sort.iterrows():
+          if low[1]['品番'] in ST06_ONLY or (low[1]['date_diff'] >= 5 and low[1]['品番'] not in DENSO_list):
+            continue
+      
+          # 容量以下になるように備品を詰め込む
+          if low[1]['重量'] + total_size <= 22000:
+            total_size += low[1]['重量']
+            total_priority += low[1]['優先ランク②']
+            parts_list.append(low[1]['品番'])
+      
+      # 重量が20000以下なら計画しない
+      if total_size < 20000:
+        continue
+
       # データの集計
       total_dict[heat] = total_size
       priority_dict[heat] = total_priority
@@ -117,29 +128,40 @@ def solve_greedy(data, heat_list, furnace_name):
           
       # 納期直前のデータは予め投入しておく
       if len(deadline) > 0:
-        for deadline_data in deadline.iterrows():
-          if deadline_data[1]['重量'] + total_size <= 8800:
-            total_size += deadline_data[1]['重量']
-            total_priority += deadline_data[1]['優先ランク②']
-            parts_list.append(deadline_data[1]['品番'])
+        deadline_heat_list = deadline['ヒート'].unique().tolist()
+        for dead_heat in deadline_heat_list:
+          data_heat = data[data['ヒート'] == dead_heat].sort_values(by=["優先ランク②","重量"] , ascending=[True,False])
+          for deadline_data in data_heat.iterrows():
+            if deadline_data[1]['重量'] + total_size <= 8800:
+              total_size += deadline_data[1]['重量']
+              total_priority += deadline_data[1]['優先ランク②']
+              parts_list.append(deadline_data[1]['品番'])
       
       # 熱処理2回目のデータは予め投入しておく
-      if len(heat_2) > 0:
-        for heat_data in heat_2.iterrows():
-          if heat_data[1]['重量'] + total_size <= 8800:
-            total_size += heat_data[1]['重量']
-            total_priority += heat_data[1]['優先ランク②']
-            parts_list.append(heat_data[1]['品番'])
+      elif len(heat_2) > 0:
+        heat_2_list = heat_2['ヒート'].unique().tolist()
+        for heat_2_ in heat_2_list:
+          data_heat_2 = data[data['ヒート'] == heat_2_].sort_values(by=["優先ランク②","重量"] , ascending=[True,False])
+          for heat_data in data_heat_2.iterrows():
+            if heat_data[1]['重量'] + total_size <= 8800:
+              total_size += heat_data[1]['重量']
+              total_priority += heat_data[1]['優先ランク②']
+              parts_list.append(heat_data[1]['品番'])
+      
+      else:
+        for low in data_sort.iterrows():
+          if low[1]['品番'] in ST06_NG or (low[1]['date_diff'] >= 5 and low[1]['品番'] not in DENSO_list):
+            continue
+            
+          if low[1]['重量'] + total_size <= 8800:
+            total_size += low[1]['重量']
+            total_priority += low[1]['優先ランク②']
+            parts_list.append(low[1]['品番'])
 
-      for low in data_sort.iterrows():
-        if low[1]['品番'] in ST06_NG or (low[1]['date_diff'] >= 5 and low[1]['品番'] not in DENSO_list):
-          continue
-          
-        if low[1]['重量'] + total_size <= 8800:
-          total_size += low[1]['重量']
-          total_priority += low[1]['優先ランク②']
-          parts_list.append(low[1]['品番'])
-        
+      # 重量が8000以下なら計画しない
+      if total_size < 8000:
+        continue
+
       # データの集計
       total_dict[heat] = total_size
       priority_dict[heat] = total_priority
@@ -201,18 +223,18 @@ if uploaded_file is not None:
     data = data.drop(['today','date_diff'],axis=1)
     
     # 表示する用のdataframeにデータを絞り込む
-    display_data = data[["客先（出荷）納期", "優先ランク②", "品番", "重量", "ヒート", "状態", "本日入荷・荒引き日", "出炉日+L1709", "備考"]]
+    display_data = data[["客先（出荷）納期", "優先ランク②", "品番", "重量", "ヒート", "状態", "本日入荷・荒引き日", "計画有無"]]
 
     # 結果の表示
     st.dataframe(weight_df)
     st.dataframe(display_data)
-    
-  st.sidebar.markdown("### 3. csvダウンロード")
-  if st.sidebar.checkbox('csvダウンロード画面を表示しますか？'):
-    st.markdown("### 3. 結果のダウンロード")
 
-    st.download_button(
-      label='ダウンロードボタン',
-      data=data.to_csv(index=None).encode('cp932'),
-      file_name='result.csv'
-    )
+    st.sidebar.markdown("### 3. csvダウンロード")
+    if st.sidebar.checkbox('csvダウンロード画面を表示しますか？'):
+      st.markdown("### 3. 結果のダウンロード")
+
+      st.download_button(
+        label='ダウンロードボタン',
+        data=data.to_csv(index=None).encode('cp932'),
+        file_name='result.csv'
+      )
